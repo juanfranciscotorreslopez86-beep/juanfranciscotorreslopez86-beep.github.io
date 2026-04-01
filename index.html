@@ -1,25 +1,173 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>Gamepad Controller</title>
+  <head>
+    <meta charset="utf-8">
+    <title>WebXR Fix - Hands & Physics</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/aframe-hand-controls@6.2.0/dist/aframe-hand-controls.min.js"></script>
     <style>
-        #gamepad { display: none; } /* Hides gamepad controllers */
-        .hand { width: 150%; height: 150%; } /* Makes hands larger */
+      /* Ocultar los mandos visuales */
+      [vive-focus-controls], [oculus-touch-controls] {
+        display: none !important;
+      }
     </style>
-</head>
-<body>
-    <div id="gamepad" class="hand"></div>
+  </head>
+  <body>
+    <a-scene physics="debug: true; gravity: -9.8">
+      
+      <a-sky color="#222"></a-sky>
+
+      <a-plane static-body 
+               rotation="-90 0 0" 
+               width="50" height="50" 
+               color="#333"></a-plane>
+
+      <a-box static-body 
+             position="0 0.8 -0.7" 
+             width="1.2" height="0.1" depth="0.7" 
+             color="#555"></a-box>
+
+      <a-box id="box1" dynamic-body position="-0.2 1 -0.6" scale="0.1 0.1 0.1" color="red"></a-box>
+      <a-sphere id="sphere1" dynamic-body position="0 1 -0.6" radius="0.06" color="blue"></a-sphere>
+      <a-cone id="cone1" dynamic-body position="0.2 1 -0.6" scale="0.1 0.1 0.1" segments-radial="3" color="yellow"></a-cone>
+
+      <a-entity id="leftHand" 
+                hand-tracking-controls="hand: left; modelStyle: mesh;"
+                vive-focus-controls="hand: left"
+                oculus-touch-controls="hand: left"
+                static-body="shape: sphere; sphereRadius: 0.05">
+        <!-- Mano más grande -->
+        <a-sphere radius="0.08" color="rgba(100, 100, 150, 0.8)" position="0 0 0"></a-sphere>
+      </a-entity>
+
+      <a-entity id="rightHand" 
+                hand-tracking-controls="hand: right; modelStyle: mesh;"
+                vive-focus-controls="hand: right"
+                oculus-touch-controls="hand: right"
+                static-body="shape: sphere; sphereRadius: 0.05">
+        <!-- Mano más grande -->
+        <a-sphere radius="0.08" color="rgba(100, 100, 150, 0.8)" position="0 0 0"></a-sphere>
+      </a-entity>
+
+      <a-entity id="rig" position="0 0 0">
+        <a-camera position="0 1.6 0" look-controls wasd-controls="acceleration: 100"></a-camera>
+      </a-entity>
+
+    </a-scene>
+
     <script>
-        // Joystick movement and grab/drop functionality
-        let joystick = document.getElementById('gamepad');
-        document.addEventListener('gamepadconnected', function(event) {
-            joystick.style.display = 'block'; // Show joystick on connection
-            let gamepadIndex = event.gamepad.index;
-            // Implement joystick movement and grab/drop logic here
+      const userAgent = navigator.userAgent.toLowerCase();
+      if (userAgent.includes('pico')) {
+        console.warn('Pico 4 detectado. Hand-tracking no está disponible en el navegador Pico. Usa controles tradicionales.');
+      }
+
+      // Movimiento con Joystick del mando
+      const rig = document.getElementById('rig');
+      const camera = document.querySelector('a-camera');
+      let gamepadState = { leftStickX: 0, leftStickY: 0, grabLeft: false, grabRight: false };
+      let grabbedObject = null;
+      let grabHand = null;
+
+      function updateGamepad() {
+        const gamepads = navigator.getGamepads();
+        for (let gp of gamepads) {
+          if (!gp) continue;
+
+          // Joystick izquierdo para movimiento (axes 0, 1)
+          gamepadState.leftStickX = gp.axes[0];
+          gamepadState.leftStickY = gp.axes[1];
+
+          // Botones para agarrar: LT (4) y RT (5) o similares
+          gamepadState.grabLeft = gp.buttons[4]?.pressed || gp.buttons[6]?.pressed || false;
+          gamepadState.grabRight = gp.buttons[5]?.pressed || gp.buttons[7]?.pressed || false;
+        }
+
+        // Aplicar movimiento basado en joystick
+        if (Math.abs(gamepadState.leftStickX) > 0.1 || Math.abs(gamepadState.leftStickY) > 0.1) {
+          const cameraEl = document.querySelector('a-camera');
+          const forward = new THREE.Vector3(0, 0, -1);
+          const right = new THREE.Vector3(1, 0, 0);
+          
+          cameraEl.object3D.getWorldDirection(forward);
+          right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+          const moveSpeed = 0.05;
+          const movement = new THREE.Vector3();
+          movement.addScaledVector(forward, -gamepadState.leftStickY * moveSpeed);
+          movement.addScaledVector(right, gamepadState.leftStickX * moveSpeed);
+
+          rig.object3D.position.add(movement);
+        }
+
+        // Sistema de agarre y suelta
+        handleGrabbing();
+        requestAnimationFrame(updateGamepad);
+      }
+
+      function handleGrabbing() {
+        const leftHand = document.getElementById('leftHand');
+        const rightHand = document.getElementById('rightHand');
+
+        // Agarrar con mano izquierda
+        if (gamepadState.grabLeft && !grabbedObject) {
+          grabbedObject = getNearbyObject(leftHand);
+          grabHand = 'left';
+          if (grabbedObject) {
+            grabbedObject.setAttribute('dynamic-body', 'mass: 0');
+          }
+        } else if (!gamepadState.grabLeft && grabbedObject && grabHand === 'left') {
+          // Soltar
+          if (grabbedObject) {
+            grabbedObject.setAttribute('dynamic-body', 'mass: 1');
+          }
+          grabbedObject = null;
+          grabHand = null;
+        }
+
+        // Agarrar con mano derecha
+        if (gamepadState.grabRight && !grabbedObject) {
+          grabbedObject = getNearbyObject(rightHand);
+          grabHand = 'right';
+          if (grabbedObject) {
+            grabbedObject.setAttribute('dynamic-body', 'mass: 0');
+          }
+        } else if (!gamepadState.grabRight && grabbedObject && grabHand === 'right') {
+          // Soltar
+          if (grabbedObject) {
+            grabbedObject.setAttribute('dynamic-body', 'mass: 1');
+          }
+          grabbedObject = null;
+          grabHand = null;
+        }
+
+        // Mover objeto agarrado
+        if (grabbedObject && grabHand) {
+          const hand = grabHand === 'left' ? document.getElementById('leftHand') : document.getElementById('rightHand');
+          const handPos = hand.object3D.position;
+          grabbedObject.object3D.position.copy(handPos);
+        }
+      }
+
+      function getNearbyObject(handEntity) {
+        const handPos = handEntity.object3D.position;
+        const objects = document.querySelectorAll('[dynamic-body]');
+        let nearest = null;
+        let minDist = 0.3;
+
+        objects.forEach(obj => {
+          const objPos = obj.object3D.position;
+          const dist = handPos.distanceTo(objPos);
+          if (dist < minDist) {
+            minDist = dist;
+            nearest = obj;
+          }
         });
-        document.addEventListener('gamepaddisconnected', function(event) {
-            joystick.style.display = 'none'; // Hide joystick on disconnection
-        });
+
+        return nearest;
+      }
+
+      updateGamepad();
     </script>
-</body>
+  </body>
 </html>
