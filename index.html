@@ -2,107 +2,99 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>WebXR - Movimiento Fluido Corregido</title>
+    <title>VR Real - Movimiento Nativo</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
+    <script>
+      // REGISTRAMOS UN COMPONENTE PERSONALIZADO PARA EL MOVIMIENTO
+      // Esto es mucho más estable que un script suelto
+      AFRAME.registerComponent('thumbstick-move', {
+        init: function () {
+          this.joystickData = {x: 0, y: 0};
+          // Escuchar el movimiento del stick
+          this.el.addEventListener('thumbstickmoved', (evt) => {
+            this.joystickData.x = evt.detail.x;
+            this.joystickData.y = evt.detail.y;
+          });
+        },
+        tick: function (time, deltaTime) {
+          if (Math.abs(this.joystickData.x) < 0.1 && Math.abs(this.joystickData.y) < 0.1) return;
+
+          const rig = document.getElementById('rig');
+          const head = document.getElementById('head');
+          const moveSpeed = 0.002 * deltaTime; // Velocidad ajustada al tiempo real
+
+          // Obtener la dirección de la mirada (solo rotación Y)
+          const rotation = head.object3D.rotation.y;
+
+          // Calcular movimiento
+          const forward = -this.joystickData.y * moveSpeed;
+          const side = this.joystickData.x * moveSpeed;
+
+          const x = side * Math.cos(rotation) + forward * Math.sin(rotation);
+          const z = side * Math.sin(rotation) - forward * Math.cos(rotation);
+
+          // Aplicar al Rig
+          const pos = rig.getAttribute('position');
+          pos.x += x;
+          pos.z += z;
+          rig.setAttribute('position', pos);
+        }
+      });
+    </script>
     <style>
-      /* Ocultar modelos por defecto para usar nuestras esferas */
-      [oculus-touch-controls] > a-gltf-model,
-      [hand-tracking-controls] > a-gltf-model {
-        display: none !important;
-      }
+      [oculus-touch-controls] > a-gltf-model { display: none !important; }
     </style>
   </head>
   <body>
-    <a-scene physics="debug: false; gravity: -9.8; iterations: 20">
+    <a-scene physics="debug: false; gravity: -9.8">
       
       <a-sky color="#111"></a-sky>
-      <a-light type="ambient" intensity="0.5"></a-light>
+      <a-light type="ambient" intensity="0.6"></a-light>
       <a-light type="directional" position="1 3 2" intensity="0.8"></a-light>
 
       <a-plane static-body rotation="-90 0 0" width="50" height="50" color="#222"></a-plane>
       <a-box static-body position="0 0.8 -0.7" width="1.2" height="0.1" depth="0.7" color="#444"></a-box>
 
-      <a-box class="grabbable" dynamic-body="mass: 1; linearDamping: 0.3" position="-0.2 1 -0.6" scale="0.1 0.1 0.1" color="red"></a-box>
-      <a-sphere class="grabbable" dynamic-body="mass: 1; linearDamping: 0.3" position="0 1 -0.6" radius="0.06" color="blue"></a-sphere>
-      <a-cone class="grabbable" dynamic-body="mass: 1; linearDamping: 0.3" position="0.2 1 -0.6" radius-bottom="0.06" height="0.12" color="yellow"></a-cone>
+      <a-box class="grabbable" dynamic-body="mass: 1; linearDamping: 0.5" position="-0.2 1 -0.6" scale="0.1 0.1 0.1" color="red"></a-box>
+      <a-sphere class="grabbable" dynamic-body="mass: 1; linearDamping: 0.5" position="0 1 -0.6" radius="0.06" color="blue"></a-sphere>
+      <a-cone class="grabbable" dynamic-body="mass: 1; linearDamping: 0.5" position="0.2 1 -0.6" radius-bottom="0.06" height="0.12" color="yellow"></a-cone>
 
       <a-entity id="rig" position="0 0 0">
         <a-camera id="head" look-controls position="0 1.6 0"></a-camera>
         
         <a-entity id="leftHand" 
-                  hand-tracking-controls="hand: left"
                   oculus-touch-controls="hand: left"
-                  static-body="shape: sphere; sphereRadius: 0.06;">
-                  <a-sphere radius="0.06" color="#00ff88" opacity="0.6"></a-sphere>
+                  hand-tracking-controls="hand: left"
+                  thumbstick-move 
+                  static-body="shape: sphere; sphereRadius: 0.06">
+                  <a-sphere radius="0.06" color="#00ff88"></a-sphere>
         </a-entity>
 
         <a-entity id="rightHand" 
-                  hand-tracking-controls="hand: right"
                   oculus-touch-controls="hand: right"
-                  static-body="shape: sphere; sphereRadius: 0.06;">
-                  <a-sphere radius="0.06" color="#00ff88" opacity="0.6"></a-sphere>
+                  hand-tracking-controls="hand: right"
+                  static-body="shape: sphere; sphereRadius: 0.06">
+                  <a-sphere radius="0.06" color="#00ff88"></a-sphere>
         </a-entity>
       </a-entity>
 
     </a-scene>
 
     <script>
-      const rig = document.getElementById('rig');
-      const head = document.getElementById('head');
-      const moveSpeed = 0.05;
-      
-      let joystick = { x: 0, y: 0 };
+      // LÓGICA DE AGARRE (Mantenemos la que funcionaba)
       let grabbedObj = null;
       let activeHand = null;
 
-      // --- ESCUCHA DE JOYSTICK (MÉTODO ESTABLE) ---
-      // Escuchamos el evento de movimiento del thumbstick en la mano izquierda
-      document.getElementById('leftHand').addEventListener('thumbstickmoved', function (evt) {
-        joystick.x = evt.detail.x;
-        joystick.y = evt.detail.y;
-      });
-
-      // --- BUCLE DE ANIMACIÓN (TICK) ---
-      function update() {
-        // MOVIMIENTO (Solo si el joystick se mueve más allá de la zona muerta)
-        if (Math.abs(joystick.x) > 0.1 || Math.abs(joystick.y) > 0.1) {
-          // Dirección basada en la mirada (solo rotación Y para no volar)
-          const rotation = head.getAttribute('rotation');
-          const angle = (rotation.y) * Math.PI / 180;
-
-          const forward = -joystick.y * moveSpeed;
-          const side = joystick.x * moveSpeed;
-
-          // Calcular nueva posición
-          const pos = rig.getAttribute('position');
-          pos.x += side * Math.cos(angle) + forward * Math.sin(angle);
-          pos.z += side * Math.sin(angle) - forward * Math.cos(angle);
-          
-          rig.setAttribute('position', pos);
-        }
-
-        // MANTENER OBJETO AGARRADO
-        if (grabbedObj && activeHand) {
-          grabbedObj.object3D.position.copy(activeHand.object3D.position);
-          grabbedObj.object3D.rotation.copy(activeHand.object3D.rotation);
-        }
-
-        requestAnimationFrame(update);
-      }
-
-      // --- LÓGICA DE AGARRE ---
       function onGrab(evt) {
         if (grabbedObj) return;
         const hand = evt.target;
         const items = document.querySelectorAll('.grabbable');
-        
         items.forEach(item => {
           const dist = hand.object3D.position.distanceTo(item.object3D.position);
           if (dist < 0.2) {
             grabbedObj = item;
             activeHand = hand;
-            // Desactivar física para que no colisione con la mano mientras se sujeta
             grabbedObj.removeAttribute('dynamic-body');
             hand.removeAttribute('static-body');
           }
@@ -111,15 +103,13 @@
 
       function onRelease() {
         if (grabbedObj) {
-          // Devolver física y colisiones
-          grabbedObj.setAttribute('dynamic-body', 'mass: 1; linearDamping: 0.3');
+          grabbedObj.setAttribute('dynamic-body', 'mass: 1; linearDamping: 0.5');
           activeHand.setAttribute('static-body', 'shape: sphere; sphereRadius: 0.06');
           grabbedObj = null;
           activeHand = null;
         }
       }
 
-      // Configurar eventos en ambas manos
       [document.getElementById('leftHand'), document.getElementById('rightHand')].forEach(h => {
         h.addEventListener('triggerdown', onGrab);
         h.addEventListener('gripdown', onGrab);
@@ -127,7 +117,14 @@
         h.addEventListener('gripup', onRelease);
       });
 
-      update();
+      function grabLoop() {
+        if (grabbedObj && activeHand) {
+          grabbedObj.object3D.position.copy(activeHand.object3D.position);
+          grabbedObj.object3D.rotation.copy(activeHand.object3D.rotation);
+        }
+        requestAnimationFrame(grabLoop);
+      }
+      grabLoop();
     </script>
   </body>
 </html>
