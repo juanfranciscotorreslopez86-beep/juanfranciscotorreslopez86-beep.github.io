@@ -2,170 +2,128 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>WebXR Fix - Hands & Physics</title>
+    <title>VR Physics - Fixed Table</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/aframe-hand-controls@6.2.0/dist/aframe-hand-controls.min.js"></script>
-    <style>
-      /* Ocultar los mandos visuales */
-      [vive-focus-controls], [oculus-touch-controls] {
-        display: none !important;
-      }
-    </style>
   </head>
   <body>
-    <a-scene physics="debug: true; gravity: -9.8">
+    <a-scene physics="debug: false; gravity: -9.8; friction: 0.1; restitution: 0.2;">
       
-      <a-sky color="#222"></a-sky>
+      <a-sky color="#1a1a1a"></a-sky>
 
       <a-plane static-body 
                rotation="-90 0 0" 
-               width="50" height="50" 
-               color="#333"></a-plane>
+               width="20" height="20" 
+               color="#333" 
+               material="roughness: 1"></a-plane>
 
-      <a-box static-body 
+      <a-box id="mesa" 
+             static-body="friction: 1; restitution: 0.1" 
              position="0 0.8 -0.7" 
              width="1.2" height="0.1" depth="0.7" 
-             color="#555"></a-box>
+             color="#444">
+      </a-box>
 
-      <a-box id="box1" dynamic-body position="-0.2 1 -0.6" scale="0.1 0.1 0.1" color="red"></a-box>
-      <a-sphere id="sphere1" dynamic-body position="0 1 -0.6" radius="0.06" color="blue"></a-sphere>
-      <a-cone id="cone1" dynamic-body position="0.2 1 -0.6" scale="0.1 0.1 0.1" segments-radial="3" color="yellow"></a-cone>
+      <a-box class="grabbable" 
+             dynamic-body="mass: 1; linearDamping: 0.5; angularDamping: 0.5" 
+             position="-0.2 1 -0.6" 
+             scale="0.1 0.1 0.1" 
+             color="red"></a-box>
 
-      <a-entity id="leftHand" 
-                hand-tracking-controls="hand: left; modelStyle: mesh;"
-                oculus-touch-controls="hand: left"
-                static-body="shape: sphere; sphereRadius: 0.05">
-        <!-- Mano más grande -->
-        <a-sphere radius="0.08" color="rgba(100, 100, 150, 0.8)" position="0 0 0"></a-sphere>
-      </a-entity>
+      <a-sphere class="grabbable" 
+                dynamic-body="mass: 1; linearDamping: 0.5; angularDamping: 0.5" 
+                position="0 1 -0.6" 
+                radius="0.06" 
+                color="blue"></a-sphere>
 
-      <a-entity id="rightHand" 
-                hand-tracking-controls="hand: right; modelStyle: mesh;"
-                oculus-touch-controls="hand: right"
-                static-body="shape: sphere; sphereRadius: 0.05">
-        <!-- Mano más grande -->
-        <a-sphere radius="0.08" color="rgba(100, 100, 150, 0.8)" position="0 0 0"></a-sphere>
-      </a-entity>
+      <a-cone class="grabbable" 
+              dynamic-body="mass: 1; linearDamping: 0.5; angularDamping: 0.5" 
+              position="0.2 1 -0.6" 
+              radius-bottom="0.06" height="0.12" 
+              color="yellow"></a-cone>
 
       <a-entity id="rig" position="0 0 0">
         <a-camera position="0 1.6 0" look-controls></a-camera>
+        
+        <a-entity id="leftHand" 
+                  hand-tracking-controls="hand: left"
+                  oculus-touch-controls="hand: left">
+                  <a-sphere radius="0.05" opacity="0.3" color="white"></a-sphere>
+        </a-entity>
+
+        <a-entity id="rightHand" 
+                  hand-tracking-controls="hand: right"
+                  oculus-touch-controls="hand: right">
+                  <a-sphere radius="0.05" opacity="0.3" color="white"></a-sphere>
+        </a-entity>
       </a-entity>
 
     </a-scene>
 
     <script>
-      const userAgent = navigator.userAgent.toLowerCase();
-      if (userAgent.includes('pico')) {
-        console.warn('Pico 4 detectado. Hand-tracking no está disponible en el navegador Pico. Usa controles tradicionales.');
-      }
-
-      // Variables globales
       const rig = document.getElementById('rig');
-      const camera = document.querySelector('a-camera');
-      let grabbedObject = null;
-      let grabHand = null;
-      const moveSpeed = 0.08;
+      const moveSpeed = 0.05;
+      let grabbedObj = null;
+      let currentHand = null;
 
-      // Detectar eventos del joystick VR (thumbstick)
-      const leftHand = document.getElementById('leftHand');
-      const rightHand = document.getElementById('rightHand');
+      // Movimiento con Joystick Izquierdo
+      document.getElementById('leftHand').addEventListener('thumbstickmoved', (e) => {
+        const camera = document.querySelector('a-camera');
+        const angle = camera.getAttribute('rotation').y * Math.PI / 180;
+        
+        const forward = -e.detail.y * moveSpeed;
+        const side = e.detail.x * moveSpeed;
 
-      // Movimiento con joystick del mando VR
-      leftHand.addEventListener('thumbstickdown', onLeftThumbstick);
-      rightHand.addEventListener('thumbstickdown', onRightThumbstick);
-      leftHand.addEventListener('thumbstickmoved', onLeftThumbstick);
-      rightHand.addEventListener('thumbstickmoved', onRightThumbstick);
+        const pos = rig.getAttribute('position');
+        pos.x += side * Math.cos(angle) + forward * Math.sin(angle);
+        pos.z += side * Math.sin(angle) - forward * Math.cos(angle);
+        rig.setAttribute('position', pos);
+      });
 
-      // Eventos de agarre (grip) para Meta Quest / Oculus
-      leftHand.addEventListener('gripdown', () => grabObject(leftHand));
-      leftHand.addEventListener('gripup', () => releaseObject());
-      rightHand.addEventListener('gripdown', () => grabObject(rightHand));
-      rightHand.addEventListener('gripup', () => releaseObject());
-
-      // Alternativa: detectar trigger press
-      leftHand.addEventListener('triggerdown', () => grabObject(leftHand));
-      leftHand.addEventListener('triggerup', () => releaseObject());
-      rightHand.addEventListener('triggerdown', () => grabObject(rightHand));
-      rightHand.addEventListener('triggerup', () => releaseObject());
-
-      function onLeftThumbstick(event) {
-        if (event.detail && event.detail.x !== undefined) {
-          moveRig(event.detail.x, event.detail.y);
-        }
-      }
-
-      function onRightThumbstick(event) {
-        if (event.detail && event.detail.x !== undefined) {
-          moveRig(event.detail.x, event.detail.y);
-        }
-      }
-
-      function moveRig(x, y) {
-        if (Math.abs(x) < 0.1 && Math.abs(y) < 0.1) return;
-
-        const cameraEl = document.querySelector('a-camera');
-        const forward = new THREE.Vector3(0, 0, -1);
-        const right = new THREE.Vector3(1, 0, 0);
-
-        cameraEl.object3D.getWorldDirection(forward);
-        right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-
-        const movement = new THREE.Vector3();
-        movement.addScaledVector(forward, -y * moveSpeed);
-        movement.addScaledVector(right, x * moveSpeed);
-
-        rig.object3D.position.add(movement);
-      }
-
-      function grabObject(hand) {
-        if (grabbedObject) return;
-        grabbedObject = getNearbyObject(hand);
-        grabHand = hand.id;
-        if (grabbedObject) {
-          grabbedObject.setAttribute('dynamic-body', 'mass: 0');
-          console.log('Objeto agarrado');
-        }
-      }
-
-      function releaseObject() {
-        if (grabbedObject) {
-          grabbedObject.setAttribute('dynamic-body', 'mass: 1');
-          grabbedObject = null;
-          grabHand = null;
-          console.log('Objeto soltado');
-        }
-      }
-
-      function getNearbyObject(handEntity) {
-        const handPos = handEntity.object3D.position;
-        const objects = document.querySelectorAll('[dynamic-body]');
-        let nearest = null;
-        let minDist = 0.3;
-
-        objects.forEach(obj => {
-          const objPos = obj.object3D.position;
-          const dist = handPos.distanceTo(objPos);
-          if (dist < minDist) {
-            minDist = dist;
-            nearest = obj;
+      // Lógica de agarre optimizada
+      function grab(evt) {
+        if (grabbedObj) return;
+        const hand = evt.target;
+        const items = document.querySelectorAll('.grabbable');
+        
+        items.forEach(item => {
+          const dist = hand.object3D.position.distanceTo(item.object3D.position);
+          if (dist < 0.2) {
+            grabbedObj = item;
+            currentHand = hand;
+            // IMPORTANTE: Quitamos el cuerpo dinámico mientras lo sostenemos
+            // para que no haya conflictos de colisión con la mesa o la mano
+            grabbedObj.removeAttribute('dynamic-body'); 
           }
         });
-
-        return nearest;
       }
 
-      // Loop para mover objeto agarrado
-      function updateGrabbedObject() {
-        if (grabbedObject && grabHand) {
-          const hand = grabHand === 'leftHand' ? leftHand : rightHand;
-          const handPos = hand.object3D.position;
-          grabbedObject.object3D.position.copy(handPos);
+      function release() {
+        if (grabbedObj) {
+          // Re-añadimos la física al soltar
+          grabbedObj.setAttribute('dynamic-body', 'mass: 1; linearDamping: 0.5; angularDamping: 0.5');
+          grabbedObj = null;
+          currentHand = null;
         }
-        requestAnimationFrame(updateGrabbedObject);
       }
 
-      updateGrabbedObject();
+      const hands = [document.getElementById('leftHand'), document.getElementById('rightHand')];
+      hands.forEach(h => {
+        h.addEventListener('triggerdown', grab);
+        h.addEventListener('gripdown', grab);
+        h.addEventListener('triggerup', release);
+        h.addEventListener('gripup', release);
+      });
+
+      function loop() {
+        if (grabbedObj && currentHand) {
+          // El objeto sigue a la mano de forma suave
+          grabbedObj.object3D.position.copy(currentHand.object3D.position);
+          grabbedObj.object3D.rotation.copy(currentHand.object3D.rotation);
+        }
+        requestAnimationFrame(loop);
+      }
+      loop();
     </script>
   </body>
 </html>
