@@ -27,12 +27,16 @@
       <a-cone dynamic-body position="0.2 1 -0.6" scale="0.1 0.1 0.1" segments-radial="3" color="yellow"></a-cone>
 
       <a-entity id="leftHand" 
-                hand-tracking-controls="hand: left; modelStyle: mesh;" 
+                hand-tracking-controls="hand: left; modelStyle: mesh;"
+                vive-focus-controls="hand: left"
+                oculus-touch-controls="hand: left"
                 static-body="shape: sphere; sphereRadius: 0.02">
       </a-entity>
 
       <a-entity id="rightHand" 
-                hand-tracking-controls="hand: right; modelStyle: mesh;" 
+                hand-tracking-controls="hand: right; modelStyle: mesh;"
+                vive-focus-controls="hand: right"
+                oculus-touch-controls="hand: right"
                 static-body="shape: sphere; sphereRadius: 0.02">
       </a-entity>
 
@@ -41,5 +45,12 @@
       </a-entity>
 
     </a-scene>
+
+    <script>
+      const userAgent = navigator.userAgent.toLowerCase();
+      if (userAgent.includes('pico')) {
+        console.warn('Pico 4 detectado. Hand-tracking no está disponible en el navegador Pico. Usa controles tradicionales.');
+      }
+    </script>
   </body>
 </html>
