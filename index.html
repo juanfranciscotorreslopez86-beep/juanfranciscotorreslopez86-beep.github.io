@@ -34,7 +34,6 @@
 
       <a-entity id="leftHand" 
                 hand-tracking-controls="hand: left; modelStyle: mesh;"
-                vive-focus-controls="hand: left"
                 oculus-touch-controls="hand: left"
                 static-body="shape: sphere; sphereRadius: 0.05">
         <!-- Mano más grande -->
@@ -43,7 +42,6 @@
 
       <a-entity id="rightHand" 
                 hand-tracking-controls="hand: right; modelStyle: mesh;"
-                vive-focus-controls="hand: right"
                 oculus-touch-controls="hand: right"
                 static-body="shape: sphere; sphereRadius: 0.05">
         <!-- Mano más grande -->
@@ -51,7 +49,7 @@
       </a-entity>
 
       <a-entity id="rig" position="0 0 0">
-        <a-camera position="0 1.6 0" look-controls wasd-controls="acceleration: 100"></a-camera>
+        <a-camera position="0 1.6 0" look-controls></a-camera>
       </a-entity>
 
     </a-scene>
@@ -62,90 +60,80 @@
         console.warn('Pico 4 detectado. Hand-tracking no está disponible en el navegador Pico. Usa controles tradicionales.');
       }
 
-      // Movimiento con Joystick del mando
+      // Variables globales
       const rig = document.getElementById('rig');
       const camera = document.querySelector('a-camera');
-      let gamepadState = { leftStickX: 0, leftStickY: 0, grabLeft: false, grabRight: false };
       let grabbedObject = null;
       let grabHand = null;
+      const moveSpeed = 0.08;
 
-      function updateGamepad() {
-        const gamepads = navigator.getGamepads();
-        for (let gp of gamepads) {
-          if (!gp) continue;
+      // Detectar eventos del joystick VR (thumbstick)
+      const leftHand = document.getElementById('leftHand');
+      const rightHand = document.getElementById('rightHand');
 
-          // Joystick izquierdo para movimiento (axes 0, 1)
-          gamepadState.leftStickX = gp.axes[0];
-          gamepadState.leftStickY = gp.axes[1];
+      // Movimiento con joystick del mando VR
+      leftHand.addEventListener('thumbstickdown', onLeftThumbstick);
+      rightHand.addEventListener('thumbstickdown', onRightThumbstick);
+      leftHand.addEventListener('thumbstickmoved', onLeftThumbstick);
+      rightHand.addEventListener('thumbstickmoved', onRightThumbstick);
 
-          // Botones para agarrar: LT (4) y RT (5) o similares
-          gamepadState.grabLeft = gp.buttons[4]?.pressed || gp.buttons[6]?.pressed || false;
-          gamepadState.grabRight = gp.buttons[5]?.pressed || gp.buttons[7]?.pressed || false;
+      // Eventos de agarre (grip) para Meta Quest / Oculus
+      leftHand.addEventListener('gripdown', () => grabObject(leftHand));
+      leftHand.addEventListener('gripup', () => releaseObject());
+      rightHand.addEventListener('gripdown', () => grabObject(rightHand));
+      rightHand.addEventListener('gripup', () => releaseObject());
+
+      // Alternativa: detectar trigger press
+      leftHand.addEventListener('triggerdown', () => grabObject(leftHand));
+      leftHand.addEventListener('triggerup', () => releaseObject());
+      rightHand.addEventListener('triggerdown', () => grabObject(rightHand));
+      rightHand.addEventListener('triggerup', () => releaseObject());
+
+      function onLeftThumbstick(event) {
+        if (event.detail && event.detail.x !== undefined) {
+          moveRig(event.detail.x, event.detail.y);
         }
-
-        // Aplicar movimiento basado en joystick
-        if (Math.abs(gamepadState.leftStickX) > 0.1 || Math.abs(gamepadState.leftStickY) > 0.1) {
-          const cameraEl = document.querySelector('a-camera');
-          const forward = new THREE.Vector3(0, 0, -1);
-          const right = new THREE.Vector3(1, 0, 0);
-          
-          cameraEl.object3D.getWorldDirection(forward);
-          right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-
-          const moveSpeed = 0.05;
-          const movement = new THREE.Vector3();
-          movement.addScaledVector(forward, -gamepadState.leftStickY * moveSpeed);
-          movement.addScaledVector(right, gamepadState.leftStickX * moveSpeed);
-
-          rig.object3D.position.add(movement);
-        }
-
-        // Sistema de agarre y suelta
-        handleGrabbing();
-        requestAnimationFrame(updateGamepad);
       }
 
-      function handleGrabbing() {
-        const leftHand = document.getElementById('leftHand');
-        const rightHand = document.getElementById('rightHand');
+      function onRightThumbstick(event) {
+        if (event.detail && event.detail.x !== undefined) {
+          moveRig(event.detail.x, event.detail.y);
+        }
+      }
 
-        // Agarrar con mano izquierda
-        if (gamepadState.grabLeft && !grabbedObject) {
-          grabbedObject = getNearbyObject(leftHand);
-          grabHand = 'left';
-          if (grabbedObject) {
-            grabbedObject.setAttribute('dynamic-body', 'mass: 0');
-          }
-        } else if (!gamepadState.grabLeft && grabbedObject && grabHand === 'left') {
-          // Soltar
-          if (grabbedObject) {
-            grabbedObject.setAttribute('dynamic-body', 'mass: 1');
-          }
+      function moveRig(x, y) {
+        if (Math.abs(x) < 0.1 && Math.abs(y) < 0.1) return;
+
+        const cameraEl = document.querySelector('a-camera');
+        const forward = new THREE.Vector3(0, 0, -1);
+        const right = new THREE.Vector3(1, 0, 0);
+
+        cameraEl.object3D.getWorldDirection(forward);
+        right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+        const movement = new THREE.Vector3();
+        movement.addScaledVector(forward, -y * moveSpeed);
+        movement.addScaledVector(right, x * moveSpeed);
+
+        rig.object3D.position.add(movement);
+      }
+
+      function grabObject(hand) {
+        if (grabbedObject) return;
+        grabbedObject = getNearbyObject(hand);
+        grabHand = hand.id;
+        if (grabbedObject) {
+          grabbedObject.setAttribute('dynamic-body', 'mass: 0');
+          console.log('Objeto agarrado');
+        }
+      }
+
+      function releaseObject() {
+        if (grabbedObject) {
+          grabbedObject.setAttribute('dynamic-body', 'mass: 1');
           grabbedObject = null;
           grabHand = null;
-        }
-
-        // Agarrar con mano derecha
-        if (gamepadState.grabRight && !grabbedObject) {
-          grabbedObject = getNearbyObject(rightHand);
-          grabHand = 'right';
-          if (grabbedObject) {
-            grabbedObject.setAttribute('dynamic-body', 'mass: 0');
-          }
-        } else if (!gamepadState.grabRight && grabbedObject && grabHand === 'right') {
-          // Soltar
-          if (grabbedObject) {
-            grabbedObject.setAttribute('dynamic-body', 'mass: 1');
-          }
-          grabbedObject = null;
-          grabHand = null;
-        }
-
-        // Mover objeto agarrado
-        if (grabbedObject && grabHand) {
-          const hand = grabHand === 'left' ? document.getElementById('leftHand') : document.getElementById('rightHand');
-          const handPos = hand.object3D.position;
-          grabbedObject.object3D.position.copy(handPos);
+          console.log('Objeto soltado');
         }
       }
 
@@ -167,7 +155,17 @@
         return nearest;
       }
 
-      updateGamepad();
+      // Loop para mover objeto agarrado
+      function updateGrabbedObject() {
+        if (grabbedObject && grabHand) {
+          const hand = grabHand === 'leftHand' ? leftHand : rightHand;
+          const handPos = hand.object3D.position;
+          grabbedObject.object3D.position.copy(handPos);
+        }
+        requestAnimationFrame(updateGrabbedObject);
+      }
+
+      updateGrabbedObject();
     </script>
   </body>
 </html>
