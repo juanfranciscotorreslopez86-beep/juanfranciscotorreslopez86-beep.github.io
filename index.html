@@ -2,59 +2,49 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>VR Physics - Fixed Table</title>
+    <title>VR - Manos Fijas y Movimiento Terrestre</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
   </head>
   <body>
-    <a-scene physics="debug: false; gravity: -9.8; friction: 0.1; restitution: 0.2;">
+    <a-scene physics="debug: false; gravity: -9.8;" fog="type: exponential; color: #1a1a1a; density: 0.05">
       
       <a-sky color="#1a1a1a"></a-sky>
+      <a-light type="ambient" intensity="0.6"></a-light>
+      <a-light type="directional" position="1 5 2" intensity="0.5"></a-light>
 
       <a-plane static-body 
                rotation="-90 0 0" 
-               width="20" height="20" 
-               color="#333" 
-               material="roughness: 1"></a-plane>
+               width="50" height="50" 
+               src="https://cdn.jsdelivr.net/gh/aframevr/sample-assets@master/assets/images/grid.png"
+               repeat="50 50"
+               material="roughness: 1; metalness: 0">
+      </a-plane>
 
       <a-box id="mesa" 
-             static-body="friction: 1; restitution: 0.1" 
-             position="0 0.8 -0.7" 
-             width="1.2" height="0.1" depth="0.7" 
+             static-body 
+             position="0 0.8 -0.8" 
+             width="1.5" height="0.1" depth="0.8" 
              color="#444">
       </a-box>
 
-      <a-box class="grabbable" 
-             dynamic-body="mass: 1; linearDamping: 0.5; angularDamping: 0.5" 
-             position="-0.2 1 -0.6" 
-             scale="0.1 0.1 0.1" 
-             color="red"></a-box>
-
-      <a-sphere class="grabbable" 
-                dynamic-body="mass: 1; linearDamping: 0.5; angularDamping: 0.5" 
-                position="0 1 -0.6" 
-                radius="0.06" 
-                color="blue"></a-sphere>
-
-      <a-cone class="grabbable" 
-              dynamic-body="mass: 1; linearDamping: 0.5; angularDamping: 0.5" 
-              position="0.2 1 -0.6" 
-              radius-bottom="0.06" height="0.12" 
-              color="yellow"></a-cone>
+      <a-box class="grabbable" dynamic-body="mass: 1; linearDamping: 0.5" position="-0.2 1 -0.7" scale="0.1 0.1 0.1" color="red"></a-box>
+      <a-sphere class="grabbable" dynamic-body="mass: 1; linearDamping: 0.5" position="0 1 -0.7" radius="0.06" color="blue"></a-sphere>
+      <a-cone class="grabbable" dynamic-body="mass: 1; linearDamping: 0.5" position="0.2 1 -0.7" radius-bottom="0.06" height="0.12" color="yellow"></a-cone>
 
       <a-entity id="rig" position="0 0 0">
-        <a-camera position="0 1.6 0" look-controls></a-camera>
+        <a-camera id="head" look-controls position="0 1.6 0"></a-camera>
         
         <a-entity id="leftHand" 
                   hand-tracking-controls="hand: left"
                   oculus-touch-controls="hand: left">
-                  <a-sphere radius="0.05" opacity="0.3" color="white"></a-sphere>
+                  <a-sphere radius="0.03" color="white" opacity="0.4"></a-sphere>
         </a-entity>
 
         <a-entity id="rightHand" 
                   hand-tracking-controls="hand: right"
                   oculus-touch-controls="hand: right">
-                  <a-sphere radius="0.05" opacity="0.3" color="white"></a-sphere>
+                  <a-sphere radius="0.03" color="white" opacity="0.4"></a-sphere>
         </a-entity>
       </a-entity>
 
@@ -62,68 +52,79 @@
 
     <script>
       const rig = document.getElementById('rig');
-      const moveSpeed = 0.05;
+      const camera = document.getElementById('head');
+      const moveSpeed = 0.04;
+      
       let grabbedObj = null;
-      let currentHand = null;
+      let activeHand = null;
 
-      // Movimiento con Joystick Izquierdo
+      // --- MOVIMIENTO TERRESTRE (SIN VOLAR) ---
+      // Usamos el joystick izquierdo para mover el rig
       document.getElementById('leftHand').addEventListener('thumbstickmoved', (e) => {
-        const camera = document.querySelector('a-camera');
-        const angle = camera.getAttribute('rotation').y * Math.PI / 180;
-        
+        const rotation = camera.getAttribute('rotation');
+        // Convertimos grados a radianes
+        const angle = rotation.y * Math.PI / 180;
+
+        // Calculamos dirección X y Z basándonos solo en la rotación Y (cabeza)
+        // Esto evita que "volemos" si miramos hacia arriba
         const forward = -e.detail.y * moveSpeed;
         const side = e.detail.x * moveSpeed;
 
         const pos = rig.getAttribute('position');
+        
+        // Matemáticas de rotación para que "adelante" sea hacia donde miras
         pos.x += side * Math.cos(angle) + forward * Math.sin(angle);
         pos.z += side * Math.sin(angle) - forward * Math.cos(angle);
+        
+        // Mantenemos pos.y intacto para no despegar del suelo
         rig.setAttribute('position', pos);
       });
 
-      // Lógica de agarre optimizada
-      function grab(evt) {
+      // --- LÓGICA DE AGARRE (GRAB) ---
+      function onGrab(evt) {
         if (grabbedObj) return;
         const hand = evt.target;
         const items = document.querySelectorAll('.grabbable');
         
         items.forEach(item => {
+          // Calculamos distancia entre la mano y el objeto
           const dist = hand.object3D.position.distanceTo(item.object3D.position);
-          if (dist < 0.2) {
+          if (dist < 0.25) {
             grabbedObj = item;
-            currentHand = hand;
-            // IMPORTANTE: Quitamos el cuerpo dinámico mientras lo sostenemos
-            // para que no haya conflictos de colisión con la mesa o la mano
-            grabbedObj.removeAttribute('dynamic-body'); 
+            activeHand = hand;
+            // Quitamos física para que no luche contra la mesa mientras lo sujetas
+            grabbedObj.removeAttribute('dynamic-body');
           }
         });
       }
 
-      function release() {
+      function onRelease() {
         if (grabbedObj) {
-          // Re-añadimos la física al soltar
-          grabbedObj.setAttribute('dynamic-body', 'mass: 1; linearDamping: 0.5; angularDamping: 0.5');
+          // Devolvemos la física al soltarlo
+          grabbedObj.setAttribute('dynamic-body', 'mass: 1; linearDamping: 0.5');
           grabbedObj = null;
-          currentHand = null;
+          activeHand = null;
         }
       }
 
-      const hands = [document.getElementById('leftHand'), document.getElementById('rightHand')];
-      hands.forEach(h => {
-        h.addEventListener('triggerdown', grab);
-        h.addEventListener('gripdown', grab);
-        h.addEventListener('triggerup', release);
-        h.addEventListener('gripup', release);
+      // Eventos para ambas manos
+      [document.getElementById('leftHand'), document.getElementById('rightHand')].forEach(h => {
+        h.addEventListener('triggerdown', onGrab);
+        h.addEventListener('gripdown', onGrab);
+        h.addEventListener('triggerup', onRelease);
+        h.addEventListener('gripup', onRelease);
       });
 
-      function loop() {
-        if (grabbedObj && currentHand) {
-          // El objeto sigue a la mano de forma suave
-          grabbedObj.object3D.position.copy(currentHand.object3D.position);
-          grabbedObj.object3D.rotation.copy(currentHand.object3D.rotation);
+      // Loop de renderizado para que el objeto siga a la mano con suavidad
+      function update() {
+        if (grabbedObj && activeHand) {
+          // Copiamos posición y rotación de la mano al objeto
+          grabbedObj.object3D.position.copy(activeHand.object3D.position);
+          grabbedObj.object3D.rotation.copy(activeHand.object3D.rotation);
         }
-        requestAnimationFrame(loop);
+        requestAnimationFrame(update);
       }
-      loop();
+      update();
     </script>
   </body>
 </html>
