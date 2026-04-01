@@ -54,36 +54,43 @@
       const leftHand = document.getElementById('leftHand');
       const rightHand = document.getElementById('rightHand');
       
-      const moveSpeed = 0.1;
-      const deltaTime = 1/90;
+      const moveSpeed = 0.05;
       
       let joystick = { x: 0, y: 0 };
       let grabbedObj = null;
       let activeHand = null;
 
-      leftHand.addEventListener('thumbstickmoved', (e) => {
-        joystick.x = e.detail.x;
-        joystick.y = e.detail.y;
-      });
-
-      leftHand.addEventListener('thumbstickup', () => {
-        joystick.x = 0;
-        joystick.y = 0;
-      });
+      // POLLING CONSTANTE del joystick VR (cada frame)
+      function pollJoystick() {
+        const gamepads = navigator.getGamepads();
+        for (let gp of gamepads) {
+          if (gp) {
+            // Stick izquierdo (axes 0, 1) para movimiento
+            joystick.x = gp.axes[0] || 0;
+            joystick.y = gp.axes[1] || 0;
+            break;
+          }
+        }
+      }
 
       function update() {
-        if (Math.abs(joystick.x) > 0.1 || Math.abs(joystick.y) > 0.1) {
+        // Obtener valores del joystick cada frame
+        pollJoystick();
+
+        // MOVIMIENTO FLUIDO CON JOYSTICK VR
+        if (Math.abs(joystick.x) > 0.15 || Math.abs(joystick.y) > 0.15) {
           const rotation = head.getAttribute('rotation');
           const angle = (rotation.y || 0) * Math.PI / 180;
 
-          const forward = -joystick.y * moveSpeed * deltaTime;
-          const side = joystick.x * moveSpeed * deltaTime;
+          const forward = -joystick.y * moveSpeed;
+          const side = joystick.x * moveSpeed;
 
           const pos = rig.object3D.position;
           pos.x += side * Math.cos(angle) + forward * Math.sin(angle);
           pos.z += side * Math.sin(angle) - forward * Math.cos(angle);
         }
 
+        // AGARRE
         if (grabbedObj && activeHand) {
           grabbedObj.object3D.position.copy(activeHand.object3D.position);
           grabbedObj.object3D.rotation.copy(activeHand.object3D.rotation);
@@ -115,6 +122,7 @@
         }
       }
 
+      // Eventos de agarre (grip/trigger)
       const handEls = [leftHand, rightHand];
       handEls.forEach(h => {
         h.addEventListener('triggerdown', onGrab);
