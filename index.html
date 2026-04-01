@@ -1,56 +1,25 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8">
-    <title>WebXR Fix - Hands & Physics</title>
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/aframe-hand-controls@6.2.0/dist/aframe-hand-controls.min.js"></script>
-  </head>
-  <body>
-    <a-scene physics="debug: true; gravity: -9.8">
-      
-      <a-sky color="#222"></a-sky>
-
-      <a-plane static-body 
-               rotation="-90 0 0" 
-               width="50" height="50" 
-               color="#333"></a-plane>
-
-      <a-box static-body 
-             position="0 0.8 -0.7" 
-             width="1.2" height="0.1" depth="0.7" 
-             color="#555"></a-box>
-
-      <a-box dynamic-body position="-0.2 1 -0.6" scale="0.1 0.1 0.1" color="red"></a-box>
-      <a-sphere dynamic-body position="0 1 -0.6" radius="0.06" color="blue"></a-sphere>
-      <a-cone dynamic-body position="0.2 1 -0.6" scale="0.1 0.1 0.1" segments-radial="3" color="yellow"></a-cone>
-
-      <a-entity id="leftHand" 
-                hand-tracking-controls="hand: left; modelStyle: mesh;"
-                vive-focus-controls="hand: left"
-                oculus-touch-controls="hand: left"
-                static-body="shape: sphere; sphereRadius: 0.02">
-      </a-entity>
-
-      <a-entity id="rightHand" 
-                hand-tracking-controls="hand: right; modelStyle: mesh;"
-                vive-focus-controls="hand: right"
-                oculus-touch-controls="hand: right"
-                static-body="shape: sphere; sphereRadius: 0.02">
-      </a-entity>
-
-      <a-entity id="rig" position="0 0 0">
-        <a-camera position="0 1.6 0" look-controls></a-camera>
-      </a-entity>
-
-    </a-scene>
-
+<head>
+    <title>Gamepad Controller</title>
+    <style>
+        #gamepad { display: none; } /* Hides gamepad controllers */
+        .hand { width: 150%; height: 150%; } /* Makes hands larger */
+    </style>
+</head>
+<body>
+    <div id="gamepad" class="hand"></div>
     <script>
-      const userAgent = navigator.userAgent.toLowerCase();
-      if (userAgent.includes('pico')) {
-        console.warn('Pico 4 detectado. Hand-tracking no está disponible en el navegador Pico. Usa controles tradicionales.');
-      }
+        // Joystick movement and grab/drop functionality
+        let joystick = document.getElementById('gamepad');
+        document.addEventListener('gamepadconnected', function(event) {
+            joystick.style.display = 'block'; // Show joystick on connection
+            let gamepadIndex = event.gamepad.index;
+            // Implement joystick movement and grab/drop logic here
+        });
+        document.addEventListener('gamepaddisconnected', function(event) {
+            joystick.style.display = 'none'; // Hide joystick on disconnection
+        });
     </script>
-  </body>
+</body>
 </html>
